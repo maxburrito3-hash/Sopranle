@@ -1,0 +1,1133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sopranle — Name That Episode</title>
+<meta name="description" content="A daily guessing game: watch a few seconds of a Sopranos scene and name the episode.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0c0b0a;
+    --panel: #171513;
+    --panel-2: #201d1a;
+    --line: #2f2a26;
+    --text: #efe8de;
+    --muted: #9b9188;
+    --accent: #c41f2e;
+    --accent-hi: #e0384a;
+    --hit: #3c9a52;
+    --close: #c9a227;
+    --miss: #a3343a;
+    --skip: #4a4540;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh;
+    background:
+      radial-gradient(1200px 500px at 50% -180px, rgba(196, 31, 46, .22), transparent 70%),
+      var(--bg);
+    color: var(--text);
+    font: 15px/1.45 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:disabled { cursor: not-allowed; opacity: .45; }
+  :focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+
+  .wrap { max-width: 720px; margin: 0 auto; padding: 14px 16px 48px; }
+
+  /* ---------- header ---------- */
+  .top { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 8px; padding: 6px 0 16px; }
+  .brand { text-align: center; }
+  .brand h1 {
+    margin: 0; font: 700 34px/1 Oswald, Impact, sans-serif; letter-spacing: .14em;
+    padding-left: .14em; /* balance letter-spacing */
+  }
+  .brand .sub { margin-top: 6px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .brand .sub b { color: var(--accent-hi); font-weight: 600; }
+  .icon-btn {
+    width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line);
+    background: var(--panel); display: grid; place-items: center; font-weight: 700;
+  }
+  .icon-btn:hover { border-color: #4a423b; background: var(--panel-2); }
+  .icon-btn svg { width: 18px; height: 18px; }
+
+  .banner {
+    margin: 0 0 14px; padding: 10px 14px; border-radius: var(--radius);
+    background: #2a1416; border: 1px solid #5a2328; color: #f3c9cd; font-size: 14px;
+  }
+  .banner code { background: rgba(0,0,0,.35); padding: 1px 6px; border-radius: 4px; }
+
+  /* ---------- video stage ---------- */
+  .stage {
+    position: relative; aspect-ratio: 16 / 9; background: #000; overflow: hidden;
+    border-radius: 14px; border: 1px solid var(--line);
+    box-shadow: 0 18px 50px rgba(0,0,0,.55);
+  }
+  /* The iframe is taller than the stage and shifted up, so YouTube's title bar
+     (top) and logo/controls (bottom) fall outside the visible area. */
+  .stage .yt { position: absolute; left: 0; right: 0; top: -80px; bottom: -80px; }
+  .stage .yt iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .shield { position: absolute; inset: 0; z-index: 2; cursor: pointer; }
+  .cover {
+    position: absolute; inset: 0; z-index: 3; border: 0; padding: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+    background:
+      radial-gradient(circle at 50% 42%, rgba(196,31,46,.20), transparent 55%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 2px, transparent 2px 4px),
+      #0b0a09;
+    transition: opacity .15s ease;
+  }
+  .cover .disc {
+    width: 78px; height: 78px; border-radius: 50%; background: var(--accent);
+    display: grid; place-items: center; box-shadow: 0 0 0 8px rgba(196,31,46,.18);
+    transition: transform .12s ease, background .12s ease;
+  }
+  .cover:hover:not(:disabled) .disc { transform: scale(1.06); background: var(--accent-hi); }
+  .cover .disc svg { width: 30px; height: 30px; margin-left: 4px; fill: #fff; }
+  .cover .label { font: 600 18px/1.2 Oswald, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
+  .cover .hint { font-size: 13px; color: var(--muted); }
+  .cover .spinner {
+    display: none; width: 46px; height: 46px; border-radius: 50%;
+    border: 4px solid rgba(255,255,255,.12); border-top-color: var(--accent-hi);
+    animation: spin .8s linear infinite;
+  }
+  .stage.loading .cover .disc { display: none; }
+  .stage.loading .cover .spinner { display: block; }
+  .stage.playing .cover { opacity: 0; pointer-events: none; }
+  .stage.tap-mode .cover, .stage.tap-mode .shield { display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- timeline ---------- */
+  .timeline { display: flex; align-items: center; gap: 12px; margin: 14px 0 6px; }
+  .play-btn {
+    flex: none; width: 46px; height: 46px; border-radius: 50%; border: 0;
+    background: var(--accent); display: grid; place-items: center;
+  }
+  .play-btn:hover:not(:disabled) { background: var(--accent-hi); }
+  .play-btn svg { width: 18px; height: 18px; fill: #fff; }
+  .track-wrap { flex: 1; min-width: 0; }
+  .track { position: relative; height: 10px; border-radius: 999px; background: #26221f; overflow: hidden; }
+  .track .unlocked { position: absolute; inset: 0 auto 0 0; background: #4b433c; transition: width .35s ease; }
+  .track .played { position: absolute; inset: 0 auto 0 0; background: var(--accent-hi); width: 0; }
+  .track .tick { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--bg); }
+  .marks { position: relative; height: 18px; margin-top: 4px; font-size: 11px; color: var(--muted); }
+  .marks span { position: absolute; transform: translateX(-50%); }
+  .marks span:last-child { transform: translateX(-100%); }
+  .marks span.on { color: var(--text); font-weight: 600; }
+  .clock { flex: none; width: 58px; text-align: right; font: 600 14px/1 Oswald, sans-serif; letter-spacing: .04em; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .msg { min-height: 22px; margin: 4px 0 8px; text-align: center; font-size: 14px; color: var(--muted); }
+  .msg.warn { color: #f0b9be; }
+
+  /* ---------- guesses ---------- */
+  .guesses { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 8px; }
+  .slot {
+    display: grid; grid-template-columns: 32px 1fr auto; align-items: center; gap: 12px;
+    min-height: 54px; padding: 8px 14px 8px 10px; border-radius: 10px;
+    background: var(--panel); border: 1px solid var(--line); border-left-width: 4px;
+  }
+  .slot .badge {
+    width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+    font-size: 13px; font-weight: 700; background: var(--panel-2); color: var(--muted);
+  }
+  .slot .g-main { min-width: 0; }
+  .slot .g-title { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .slot .g-hint { display: block; font-size: 12.5px; color: var(--muted); }
+  .slot .g-code { font: 600 13px/1 Oswald, sans-serif; letter-spacing: .06em; color: var(--muted); }
+  .slot.empty .g-title { color: var(--muted); font-weight: 500; }
+  .slot.current { border-color: #4b433c; }
+  .slot.current .badge { background: var(--accent); color: #fff; }
+  .slot.hit { border-left-color: var(--hit); }
+  .slot.hit .badge { background: var(--hit); color: #fff; }
+  .slot.close { border-left-color: var(--close); }
+  .slot.close .badge { background: var(--close); color: #1a1406; }
+  .slot.miss { border-left-color: var(--miss); }
+  .slot.miss .badge { background: var(--miss); color: #fff; }
+  .slot.skip { border-left-color: var(--skip); }
+  .slot.skip .g-title { color: var(--muted); }
+
+  /* ---------- guess input ---------- */
+  .combo { position: relative; }
+  .combo input {
+    width: 100%; height: 50px; padding: 0 16px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--text); font: inherit; font-size: 16px;
+  }
+  .combo input::placeholder { color: #776e66; }
+  .combo input:focus { outline: none; border-color: var(--accent-hi); box-shadow: 0 0 0 3px rgba(196,31,46,.25); }
+  .suggest {
+    position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 20; margin: 0; padding: 6px;
+    list-style: none; max-height: 300px; overflow-y: auto; border-radius: 10px;
+    background: #1c1916; border: 1px solid #3a342f; box-shadow: 0 16px 40px rgba(0,0,0,.6);
+  }
+  .suggest li {
+    display: flex; gap: 10px; align-items: baseline; padding: 9px 10px; border-radius: 7px; cursor: pointer;
+  }
+  .suggest li .code { flex: none; width: 52px; font: 600 13px/1 Oswald, sans-serif; letter-spacing: .05em; color: var(--muted); }
+  .suggest li.active, .suggest li:hover { background: #2c2723; }
+  .suggest li.active .code { color: var(--accent-hi); }
+  .suggest li.used { opacity: .4; cursor: not-allowed; text-decoration: line-through; }
+  .suggest li.season-head { cursor: default; padding: 10px 10px 4px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); background: none; }
+  .suggest li.none { cursor: default; color: var(--muted); background: none; }
+
+  .actions { display: flex; gap: 10px; margin-top: 10px; }
+  .btn {
+    flex: 1; height: 48px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--panel); font-weight: 600; letter-spacing: .02em;
+  }
+  .btn:hover:not(:disabled) { background: var(--panel-2); border-color: #4a423b; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover:not(:disabled) { background: var(--accent-hi); border-color: var(--accent-hi); }
+
+  /* ---------- result ---------- */
+  .result {
+    margin-top: 6px; padding: 22px 20px; border-radius: 14px; text-align: center;
+    background: var(--panel); border: 1px solid var(--line);
+  }
+  .result h2 { margin: 0 0 4px; font: 700 26px/1.15 Oswald, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+  .result .verdict { color: var(--muted); margin: 0 0 16px; }
+  .answer { padding: 14px; border-radius: 10px; background: var(--panel-2); margin-bottom: 16px; }
+  .answer .a-code { font: 600 13px/1 Oswald, sans-serif; letter-spacing: .14em; color: var(--accent-hi); text-transform: uppercase; }
+  .answer .a-title { margin-top: 6px; font: 700 24px/1.15 Oswald, sans-serif; letter-spacing: .02em; }
+  .answer .a-scene { margin-top: 6px; color: var(--muted); font-size: 14px; }
+  .squares { font-size: 22px; letter-spacing: 4px; margin-bottom: 16px; }
+  .result .actions { flex-wrap: wrap; }
+  .result .actions .btn { min-width: 140px; }
+  .result a.btn { display: grid; place-items: center; text-decoration: none; color: inherit; }
+  .next { margin-top: 16px; font-size: 13px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+  .next b { display: block; margin-top: 4px; font: 700 26px/1 Oswald, sans-serif; color: var(--text); letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+
+  /* ---------- dialogs ---------- */
+  dialog {
+    width: min(440px, calc(100vw - 32px)); padding: 0; border-radius: 16px;
+    background: var(--panel); color: var(--text); border: 1px solid var(--line);
+    box-shadow: 0 30px 80px rgba(0,0,0,.7);
+  }
+  dialog::backdrop { background: rgba(0,0,0,.65); }
+  .dlg { padding: 22px 22px 20px; }
+  .dlg h2 { margin: 0 0 12px; font: 700 22px/1.2 Oswald, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
+  .dlg p { margin: 0 0 10px; color: #d6cec4; }
+  .dlg ul { margin: 0 0 12px; padding-left: 18px; color: #d6cec4; }
+  .dlg li { margin: 4px 0; }
+  .dlg .x { float: right; margin: -6px -8px 0 0; width: 34px; height: 34px; border: 0; border-radius: 50%; background: transparent; font-size: 22px; line-height: 1; color: var(--muted); }
+  .dlg .x:hover { background: var(--panel-2); color: var(--text); }
+  .legend { display: grid; gap: 8px; margin: 10px 0 14px; font-size: 14px; }
+  .legend div { display: flex; gap: 10px; align-items: center; }
+  .legend i { flex: none; width: 14px; height: 14px; border-radius: 3px; }
+  .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center; margin-bottom: 18px; }
+  .stat-row b { display: block; font: 700 28px/1.1 Oswald, sans-serif; }
+  .stat-row span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+  .dist { display: grid; gap: 6px; }
+  .dist div { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: center; font-size: 13px; }
+  .dist .bar { min-width: 26px; padding: 3px 8px; text-align: right; border-radius: 4px; background: #39332e; font-weight: 600; }
+  .dist .bar.today { background: var(--hit); }
+
+  .toast {
+    position: fixed; left: 50%; top: 18px; transform: translate(-50%, -20px); z-index: 50;
+    padding: 10px 16px; border-radius: 10px; background: var(--text); color: #111; font-weight: 600;
+    opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .foot { margin-top: 28px; text-align: center; font-size: 12px; color: #6f665e; }
+  .foot a { color: inherit; }
+  [hidden] { display: none !important; }
+
+  @media (max-width: 480px) {
+    .brand h1 { font-size: 28px; }
+    .brand .sub { font-size: 11px; letter-spacing: .06em; }
+    .cover .disc { width: 64px; height: 64px; }
+    .result .actions .btn { min-width: 0; flex-basis: calc(50% - 5px); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <button class="icon-btn" id="helpBtn" aria-label="How to play">?</button>
+    <div class="brand">
+      <h1>SOPRANLE</h1>
+      <div class="sub" id="subtitle">Name that episode</div>
+    </div>
+    <button class="icon-btn" id="statsBtn" aria-label="Statistics">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="6" width="4" height="15" rx="1"/><rect x="17" y="9" width="4" height="12" rx="1"/></svg>
+    </button>
+  </header>
+
+  <div class="banner" id="banner" hidden></div>
+
+  <div class="stage loading" id="stage">
+    <div class="yt"><div id="player"></div></div>
+    <div class="shield" id="shield" aria-hidden="true"></div>
+    <button class="cover" id="cover" disabled>
+      <span class="spinner" aria-hidden="true"></span>
+      <span class="disc" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 4.5v15a1 1 0 0 0 1.5.87l12.5-7.5a1 1 0 0 0 0-1.74L8.5 3.63A1 1 0 0 0 7 4.5z"/></svg></span>
+      <span class="label" id="coverLabel">Loading clip…</span>
+      <span class="hint" id="coverHint"></span>
+    </button>
+  </div>
+
+  <div class="timeline">
+    <button class="play-btn" id="playBtn" aria-label="Play clip" disabled>
+      <svg viewBox="0 0 24 24" id="playIcon"><path d="M7 4.5v15a1 1 0 0 0 1.5.87l12.5-7.5a1 1 0 0 0 0-1.74L8.5 3.63A1 1 0 0 0 7 4.5z"/></svg>
+    </button>
+    <div class="track-wrap">
+      <div class="track" aria-hidden="true">
+        <div class="unlocked" id="unlocked"></div>
+        <div class="played" id="played"></div>
+        <i class="tick" style="left:30%"></i>
+        <i class="tick" style="left:50%"></i>
+      </div>
+      <div class="marks" id="marks">
+        <span style="left:30%">3s</span><span style="left:50%">5s</span><span style="left:100%">10s</span>
+      </div>
+    </div>
+    <div class="clock" id="clock">0.0s</div>
+  </div>
+
+  <div class="msg" id="msg" role="status" aria-live="polite"></div>
+
+  <ol class="guesses" id="guesses" aria-label="Your guesses"></ol>
+
+  <div id="controls">
+    <div class="combo">
+      <input id="guessInput" type="text" placeholder="Search episode title, or type S3E11…" autocomplete="off" spellcheck="false"
+             role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest">
+      <ul class="suggest" id="suggest" role="listbox" hidden></ul>
+    </div>
+    <div class="actions">
+      <button class="btn" id="skipBtn">Skip</button>
+      <button class="btn primary" id="submitBtn" disabled>Guess</button>
+    </div>
+  </div>
+
+  <section class="result" id="result" hidden aria-live="polite">
+    <h2 id="resTitle"></h2>
+    <p class="verdict" id="resVerdict"></p>
+    <div class="answer">
+      <div class="a-code" id="resCode"></div>
+      <div class="a-title" id="resEp"></div>
+      <div class="a-scene" id="resScene"></div>
+    </div>
+    <div class="squares" id="resSquares"></div>
+    <div class="actions">
+      <button class="btn primary" id="shareBtn">Share result</button>
+      <button class="btn" id="watchBtn">Watch the scene</button>
+      <a class="btn" id="ytLink" target="_blank" rel="noopener">YouTube ↗</a>
+      <button class="btn" id="practiceBtn">Practice clip</button>
+    </div>
+    <div class="next" id="nextWrap">Next clip in <b id="countdown">--:--:--</b></div>
+    <div class="next" id="practiceNote" hidden><a href="?" style="color:inherit">Back to today's clip</a></div>
+  </section>
+
+  <p class="foot">Fan-made game. Clips are embedded from YouTube and belong to their owners.</p>
+</div>
+
+<dialog id="helpDlg">
+  <div class="dlg">
+    <button class="x" data-close aria-label="Close">×</button>
+    <h2>How to play</h2>
+    <p>Each day there's a new clip from <em>The Sopranos</em>. Name the episode in 3 tries.</p>
+    <ul>
+      <li>Try 1: you see <b>3 seconds</b> of the scene.</li>
+      <li>Try 2: you see <b>5 seconds</b>.</li>
+      <li>Try 3: you see <b>10 seconds</b>.</li>
+    </ul>
+    <p>Search by title or type a code like <b>S3E11</b>. Skipping uses up a try but shows you more of the clip.</p>
+    <div class="legend">
+      <div><i style="background:var(--hit)"></i>Right episode</div>
+      <div><i style="background:var(--close)"></i>Right season, wrong episode (we'll tell you earlier or later)</div>
+      <div><i style="background:var(--miss)"></i>Wrong season (we'll tell you earlier or later)</div>
+    </div>
+    <button class="btn primary" data-close style="width:100%">Let's go</button>
+  </div>
+</dialog>
+
+<dialog id="statsDlg">
+  <div class="dlg">
+    <button class="x" data-close aria-label="Close">×</button>
+    <h2>Statistics</h2>
+    <div class="stat-row" id="statRow"></div>
+    <div class="dist" id="dist"></div>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* =====================================================================
+     CONFIG
+     ===================================================================== */
+  const ATTEMPTS = [3, 5, 10];          // seconds of clip unlocked per attempt
+  const TIMELINE_MAX = 10;              // seconds the progress bar represents
+  const LAUNCH = { y: 2026, m: 11, d: 5 }; // puzzle #1 (local date)
+  const DEFAULT_START = 1;              // seconds into a video where the clip starts, unless a clip sets `start`
+
+  const EPISODES = [null,
+    ['The Sopranos (Pilot)', '46 Long', 'Denial, Anger, Acceptance', 'Meadowlands', 'College', 'Pax Soprana',
+     'Down Neck', 'The Legend of Tennessee Moltisanti', 'Boca', 'A Hit Is a Hit', 'Nobody Knows Anything',
+     'Isabella', 'I Dream of Jeannie Cusamano'],
+    ["Guy Walks into a Psychiatrist's Office...", 'Do Not Resuscitate', 'Toodle-Fucking-Oo', 'Commendatori',
+     "Big Girls Don't Cry", 'The Happy Wanderer', 'D-Girl', 'Full Leather Jacket', 'From Where to Eternity',
+     'Bust Out', 'House Arrest', 'The Knight in White Satin Armor', 'Funhouse'],
+    ["Mr. Ruggerio's Neighborhood", 'Proshai, Livushka', 'Fortunate Son', 'Employee of the Month',
+     'Another Toothpick', 'University', 'Second Opinion', 'He Is Risen', 'The Telltale Moozadell',
+     "...To Save Us All from Satan's Power", 'Pine Barrens', 'Amour Fou', 'Army of One'],
+    ['For All Debts Public and Private', 'No Show', 'Christopher', 'The Weight', 'Pie-O-My', 'Everybody Hurts',
+     'Watching Too Much Television', 'Mergers and Acquisitions', 'Whoever Did This', 'The Strong, Silent Type',
+     'Calling All Cars', 'Eloise', 'Whitecaps'],
+    ['Two Tonys', 'Rat Pack', "Where's Johnny?", 'All Happy Families...', 'Irregular Around the Margins',
+     'Sentimental Education', 'In Camelot', 'Marco Polo', 'Unidentified Black Males', 'Cold Cuts',
+     'The Test Dream', 'Long Term Parking', 'All Due Respect'],
+    ['Members Only', 'Join the Club', 'Mayham', 'The Fleshy Part of the Thigh', 'Mr. & Mrs. John Sacrimoni Request...',
+     'Live Free or Die', 'Luxury Lounge', 'Johnny Cakes', 'The Ride', "Moe n' Joe", 'Cold Stones', 'Kaisha',
+     'Soprano Home Movies', 'Stage 5', 'Remember When', 'Chasing It', 'Walk Like a Man', 'Kennedy and Heidi',
+     'The Second Coming', 'The Blue Comet', 'Made in America'],
+  ];
+
+  /* Clip pool. `id` = YouTube video id, s/e = season/episode, scene = shown on reveal.
+     Optional `start` (seconds) sets where the clip begins inside the video.
+     To add clips, append to the END of this list — new clips join the daily rotation
+     after the ones in DAILY_ORDER, and existing days keep their clip. */
+  const CLIPS = [
+    /* 0 */ { id: 'jll2xNDymqc', s: 1, e: 1,  scene: 'Tony chases down Alex Mahaffey' },
+    /* 1 */ { id: 'EfwTreSCvdM', s: 1, e: 2,  scene: 'Christopher tells Tony that Brendan hit Comley Trucking again' },
+    /* 2 */ { id: 'cc6NH0chI-o', s: 1, e: 3,  scene: 'The guys visit Jackie Aprile Sr. in the hospital' },
+    /* 3 */ { id: '6eemjZcVsag', s: 1, e: 4,  scene: 'Detective Makazian pulls over Melfi and her date' },
+    /* 4 */ { id: 'IOG7SzBVD4Q', s: 1, e: 5,  scene: 'Tony settles things with Fabian Petrulio' },
+    /* 5 */ { id: 'OeZZ_3qzsNU', s: 1, e: 6,  scene: 'Tony comes on to Dr. Melfi during a session' },
+    /* 6 */ { id: 'JY6hhEtH1LY', s: 1, e: 7,  scene: "Tony's childhood flashbacks" },
+    /* 7 */ { id: 'fWCB8j9Whg8', s: 1, e: 8,  scene: 'Christopher shoots a bakery clerk in the foot' },
+    /* 8 */ { id: 'X9gvCfKDQCY', s: 1, e: 9,  scene: "Carmela knows Junior's secret" },
+    /* 9 */ { id: 'YtzjKArYx7I', s: 1, e: 10, scene: 'Tony plays golf with Cusamano and his friends' },
+    /* 10 */ { id: 'nff2y8vfbFw', s: 1, e: 11, scene: 'Paulie tries to take Pussy for a schvitz' },
+    /* 11 */ { id: 'Fv2UdK4G4NA', s: 1, e: 12, scene: "The attempt on Tony's life" },
+    /* 12 */ { id: 'NBGdX8kBBVk', s: 1, e: 13, scene: 'Tony confronts Livia at the hospital' },
+
+    /* 13 */ { id: 'arupUaKz1ks', s: 2, e: 1,  scene: 'Big Pussy is back at the Bing' },
+    /* 14 */ { id: 'lAGw-WDMcPI', s: 2, e: 2,  scene: "Junior doesn't want to go to the emergency room" },
+    /* 15 */ { id: '-KPtesVEi0Y', s: 2, e: 3,  scene: "Richie Aprile's welcome home party" },
+    /* 16 */ { id: 'np-FMdlkQn0', s: 2, e: 4,  scene: 'The guys try to watch The Godfather at the Bing' },
+    /* 17 */ { id: 'nq_nPTVu4Dk', s: 2, e: 5,  scene: 'Tony asks Artie to hire Furio' },
+    /* 18 */ { id: 'XJeEkILZC1A', s: 2, e: 6,  scene: 'Tony and Junior talk about the executive game' },
+    /* 19 */ { id: 'k4HKr0ICiqM', s: 2, e: 7,  scene: 'Christopher vs. Amy Safir' },
+    /* 20 */ { id: 'PSQb1ObgXoo', s: 2, e: 8,  scene: 'Furio collects, then Sean and Matt shoot Christopher' },
+    /* 21 */ { id: 'wkqcUS5AIbM', s: 2, e: 9,  scene: 'Carmela asks Tony to get a vasectomy' },
+    /* 22 */ { id: 'TjErrBx9zH4', s: 2, e: 10, scene: "Busting out Davey Scatino's store" },
+    /* 23 */ { id: 'tJUCbaCXQ6A', s: 2, e: 11, scene: 'Junior and his forty "arousals" an hour' },
+    /* 24 */ { id: 'iicxbxHqZ88', s: 2, e: 12, scene: "Richie and Janice's last argument" },
+    /* 25 */ { id: 'eqhpWwJdd7w', s: 2, e: 13, scene: 'Tony, Silvio and Paulie take Pussy out on the boat' },
+
+    /* 26 */ { id: 'MvttIFi3MwU', s: 3, e: 1,  scene: "Lunch at Satriale's" },
+    /* 27 */ { id: 'daYAGNf5gL8', s: 3, e: 2,  scene: 'Tony talks to Livia for the last time' },
+    /* 28 */ { id: 'QpNhmok3_PY', s: 3, e: 3,  scene: 'Christopher visits the pizza parlor after getting made' },
+    /* 29 */ { id: '4n4Bs0Sd5WI', s: 3, e: 4,  scene: "Tony hasn't had a panic attack since Livia died" },
+    /* 30 */ { id: '-exh2BvoBLI', s: 3, e: 5,  scene: 'Tony gets pulled over for speeding' },
+    /* 31 */ { id: 'dJuYY6MUgfs', s: 3, e: 6,  scene: 'Tracee wants to be friends with Tony' },
+    /* 32 */ { id: 'FQYPwtXnqb8', s: 3, e: 7,  scene: 'Tony and Furio pay Dr. Kennedy a visit' },
+    /* 33 */ { id: 'Oa9B8VlKw5w', s: 3, e: 8,  scene: 'Ralph refuses to have a drink with Tony' },
+    /* 34 */ { id: 'CTxg7YozlXM', s: 3, e: 9,  scene: 'AJ and his friends vandalize the school pool' },
+    /* 35 */ { id: 'N7MlQomFkMU', s: 3, e: 10, scene: 'Big Pussy as Santa' },
+    /* 36 */ { id: 'I9s68FdxcoE', s: 3, e: 11, scene: 'Paulie, Christopher and the Russian' },
+    /* 37 */ { id: 'oQ7Bm7jLONo', s: 3, e: 12, scene: 'Patsy pays Gloria Trillo a visit' },
+    /* 38 */ { id: 'YLuWurtSOiw', s: 3, e: 13, scene: "Junior and Tony at Jackie Jr.'s wake" },
+
+    /* 39 */ { id: 'luUVnyiAYOs', s: 4, e: 1,  scene: "Christopher goes after the cop who supposedly killed his father" },
+    /* 40 */ { id: 'EQtWh_lxIa0', s: 4, e: 2,  scene: 'Adriana is picked up by the feds' },
+    /* 41 */ { id: '9a7kL-X__ek', s: 4, e: 3,  scene: '"In this house, Christopher Columbus is a hero"' },
+    /* 42 */ { id: 'WLrv9bn2nZY', s: 4, e: 4,  scene: "The joke about Ginny Sack's weight" },
+    /* 43 */ { id: 'O7W5Cr_MTpE', s: 4, e: 5,  scene: 'Bobby leans on a union member' },
+    /* 44 */ { id: 'nWKhtSrZDMg', s: 4, e: 6,  scene: 'Tony dreams about Gloria Trillo' },
+    /* 45 */ { id: 'Xx9TNffQQcw', s: 4, e: 7,  scene: 'Tony pays Assemblyman Zellman a visit' },
+    /* 46 */ { id: 'vtgtNPC6p-g', s: 4, e: 8,  scene: 'Carmela raids the bird feeder' },
+    /* 47 */ { id: '3ZTynh1Y8BM', s: 4, e: 9,  scene: 'Tony vs. Ralph' },
+    /* 48 */ { id: 'L54iu_WbqRw', s: 4, e: 10, scene: "Christopher's intervention" },
+    /* 49 */ { id: 'bKE7QlFDUeU', s: 4, e: 11, scene: 'Tony meets Little Carmine in Florida' },
+    /* 50 */ { id: 'rx94cWKXCxM', s: 4, e: 12, scene: "Paulie realizes Carmine doesn't know who he is" },
+    /* 51 */ { id: 'F7rQgAgifQQ', s: 4, e: 13, scene: 'Tony and Carmela fight about his cheating' },
+
+    /* 52 */ { id: 'zC7WJDEUGbk', s: 5, e: 1,  scene: 'The bear' },
+    /* 53 */ { id: 'EjRw47ANS2A', s: 5, e: 2,  scene: "Tony Blundetto's homecoming dinner" },
+    /* 54 */ { id: 's3u6NZf_DhA', s: 5, e: 3,  scene: "Junior's \"varsity athlete\" comment ruins family dinner" },
+    /* 55 */ { id: 'ymH7zY6cbFk', s: 5, e: 4,  scene: 'Feech gets busted' },
+    /* 56 */ { id: '0bdT5Ttt-pw', s: 5, e: 5,  scene: "Tony and Adriana's car accident" },
+    /* 57 */ { id: 'iUXhD-VazU8', s: 5, e: 6,  scene: 'Mr. Wegler breaks up with Carmela' },
+    /* 58 */ { id: '5yskMkcl4HU', s: 5, e: 7,  scene: 'Junior cries at a funeral' },
+    /* 59 */ { id: 'FqIlCTDXTsM', s: 5, e: 8,  scene: "Junior spoils Hugh's surprise party" },
+    /* 60 */ { id: 'vZHEzW-8Fxc', s: 5, e: 9,  scene: "Tony and Johnny Sack golf after Joey Peeps' death" },
+    /* 61 */ { id: 'ehkOjqQA_Bs', s: 5, e: 10, scene: 'Janice and the soccer mom' },
+    /* 62 */ { id: 'qRD66jvPdRU', s: 5, e: 11, scene: "Tony's long dream (part one)" },
+    /* 63 */ { id: '3Y9Fo1dvDBw', s: 5, e: 12, scene: 'Adriana comes clean to Christopher' },
+    /* 64 */ { id: 'k1Vd0sKtBDk', s: 5, e: 13, scene: 'Tony plays favorites' },
+
+    /* 65 */ { id: 'Nq2wsiWG7xw', s: 6, e: 1,  scene: 'Tony visits a confused Uncle Junior' },
+    /* 66 */ { id: 'RoizIf5Oe30', s: 6, e: 2,  scene: 'Junior in custody' },
+    /* 67 */ { id: 'XjbgExi4XaQ', s: 6, e: 3,  scene: 'The first meeting about "Cleaver"' },
+    /* 68 */ { id: 'ea0dZh3KBYU', s: 6, e: 4,  scene: 'Paulie confronts Nucci' },
+    /* 69 */ { id: 'rOUurKplHAM', s: 6, e: 5,  scene: 'Tony and Perry Annunziata at the Bing' },
+    /* 70 */ { id: 'XxiHmg6LGVk', s: 6, e: 6,  scene: 'Carlo gets the construction business; Vito is discussed' },
+    /* 71 */ { id: 'xaPT9giofgc', s: 6, e: 7,  scene: 'Benny gets revenge on Artie' },
+    /* 72 */ { id: 'SNx55RzIVec', s: 6, e: 8,  scene: 'Vito watches Johnny Cakes save a kid from a fire' },
+    /* 73 */ { id: 'jRk2XLV1emQ', s: 6, e: 9,  scene: 'Paulie makes peace with Nucci' },
+    /* 74 */ { id: 'kjDFyo6QYcs', s: 6, e: 10, scene: '"You gotta wait for that"' },
+    /* 75 */ { id: 'uYQzpOLzSJA', s: 6, e: 11, scene: 'The crew learns what happened to Vito' },
+    /* 76 */ { id: 'jKAOZs_Q88s', s: 6, e: 12, scene: 'Tony visits Phil in the hospital' },
+    /* 77 */ { id: 'Wvsh5YgLrjA', s: 6, e: 13, scene: 'Monopoly night turns into Tony vs. Bobby' },
+    /* 78 */ { id: 'd0NFXy8y-z4', s: 6, e: 14, scene: 'The "Cleaver" premiere' },
+    /* 79 */ { id: 'j9kL3it5cFI', s: 6, e: 15, scene: '"Remember when" is the lowest form of conversation' },
+    /* 80 */ { id: 'x2xeZ9e7wVo', s: 6, e: 16, scene: 'Tony and Carmela fight about money' },
+    /* 81 */ { id: '1utaRHYjuZg', s: 6, e: 17, scene: 'Christopher visits J.T. Dolan' },
+    /* 82 */ { id: 'ZPegLj-J-DE', s: 6, e: 18, scene: 'Tony and Christopher on the road at night' },
+    /* 83 */ { id: '_ZFOePeqmTA', s: 6, e: 19, scene: "Tony sees the guys after AJ's suicide attempt" },
+    /* 84 */ { id: 'HQ3pvX36Ha4', s: 6, e: 20, scene: '"You never see a Blue Comet in that condition"' },
+    /* 85 */ { id: '7BdLGSSSvps', s: 6, e: 21, scene: "Phil Leotardo's last stop at a gas station" },
+  ];
+
+  /* Fixed, shuffled order of clips for the daily puzzle (indexes into CLIPS). */
+  const DAILY_ORDER = [36,80,70,85,73,19,9,65,81,53,35,18,75,76,60,32,55,68,20,52,26,42,71,14,48,74,30,22,0,49,
+    83,66,47,67,69,7,10,24,28,79,58,57,50,11,43,78,13,1,84,5,3,23,25,41,15,31,33,61,63,27,46,64,8,82,16,62,6,2,4,
+    56,77,37,21,38,39,40,12,44,17,51,34,72,54,45,29,59];
+
+  const KEY_STATE = 'sopranle:state:v1';
+  const KEY_STATS = 'sopranle:stats:v1';
+  const KEY_HELP = 'sopranle:seen-help:v1';
+  const YT_ERRORS_UNAVAILABLE = [2, 5, 100, 101, 150];
+
+  /* =====================================================================
+     HELPERS
+     ===================================================================== */
+  const $ = (sel) => document.querySelector(sel);
+  const store = {
+    get(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
+  };
+  const code = (s, e) => `S${s}E${e}`;
+  const epTitle = (s, e) => EPISODES[s][e - 1];
+  const normalize = (str) => str.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
+
+  const ALL_EPS = [];
+  EPISODES.forEach((titles, s) => {
+    if (!titles) return;
+    titles.forEach((title, i) => {
+      const norm = normalize(title);
+      ALL_EPS.push({ s, e: i + 1, title, norm, flat: norm.replace(/ /g, '') });
+    });
+  });
+
+  function localDayNumber(date) {
+    return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 864e5);
+  }
+  function todayPuzzle() {
+    const launch = Math.floor(Date.UTC(LAUNCH.y, LAUNCH.m - 1, LAUNCH.d) / 864e5);
+    return Math.max(1, localDayNumber(new Date()) - launch + 1);
+  }
+  function buildOrder() {
+    const seen = new Set();
+    const order = [];
+    for (const i of DAILY_ORDER) if (i < CLIPS.length && !seen.has(i)) { seen.add(i); order.push(i); }
+    CLIPS.forEach((_, i) => { if (!seen.has(i)) order.push(i); });
+    return order;
+  }
+
+  /* =====================================================================
+     STATE
+     ===================================================================== */
+  const params = new URLSearchParams(location.search);
+  const practice = params.has('practice') || params.has('clip');
+  const ORDER = buildOrder();
+  const puzzleNo = todayPuzzle();
+  let fallbackTries = 0;
+
+  function freshState() {
+    if (practice) {
+      let idx = parseInt(params.get('clip'), 10);
+      if (!(idx >= 0 && idx < CLIPS.length)) idx = Math.floor(Math.random() * CLIPS.length);
+      return { puzzle: 0, clip: idx, guesses: [], status: 'playing' };
+    }
+    return { puzzle: puzzleNo, clip: ORDER[(puzzleNo - 1) % ORDER.length], guesses: [], status: 'playing' };
+  }
+  function loadState() {
+    if (practice) return freshState();
+    const saved = store.get(KEY_STATE);
+    if (saved && saved.puzzle === puzzleNo && CLIPS[saved.clip] && Array.isArray(saved.guesses)) return saved;
+    return freshState();
+  }
+  let state = loadState();
+  const save = () => { if (!practice) store.set(KEY_STATE, state); };
+  const clip = () => CLIPS[state.clip];
+  const clipStart = () => (typeof clip().start === 'number' ? clip().start : DEFAULT_START);
+  const finished = () => state.status !== 'playing';
+  const currentLimit = () => (finished() ? Infinity : ATTEMPTS[Math.min(state.guesses.length, ATTEMPTS.length - 1)]);
+
+  function grade(g) {
+    const a = clip();
+    if (g.skip) return 'skip';
+    if (g.s === a.s && g.e === a.e) return 'hit';
+    return g.s === a.s ? 'close' : 'miss';
+  }
+  function hintFor(g) {
+    const a = clip();
+    switch (grade(g)) {
+      case 'hit': return 'Correct!';
+      case 'close': return `Right season · answer is ${a.e > g.e ? 'a later' : 'an earlier'} episode`;
+      case 'miss': return `Wrong season · answer is in ${a.s > g.s ? 'a later' : 'an earlier'} season`;
+      default: return 'Skipped';
+    }
+  }
+
+  /* =====================================================================
+     DOM
+     ===================================================================== */
+  const el = {
+    stage: $('#stage'), cover: $('#cover'), coverLabel: $('#coverLabel'), coverHint: $('#coverHint'),
+    shield: $('#shield'), playBtn: $('#playBtn'), playIcon: $('#playIcon'),
+    unlocked: $('#unlocked'), played: $('#played'), marks: $('#marks'), clock: $('#clock'),
+    msg: $('#msg'), guesses: $('#guesses'), controls: $('#controls'),
+    input: $('#guessInput'), suggest: $('#suggest'), skipBtn: $('#skipBtn'), submitBtn: $('#submitBtn'),
+    result: $('#result'), banner: $('#banner'), subtitle: $('#subtitle'), toast: $('#toast'),
+  };
+  const ICON_PLAY = 'M7 4.5v15a1 1 0 0 0 1.5.87l12.5-7.5a1 1 0 0 0 0-1.74L8.5 3.63A1 1 0 0 0 7 4.5z';
+  const ICON_STOP = 'M6 5h4v14H6zM14 5h4v14h-4z';
+
+  function showMsg(text, warn = false) {
+    el.msg.textContent = text || '';
+    el.msg.classList.toggle('warn', !!warn);
+  }
+  function showBanner(html) { el.banner.innerHTML = html; el.banner.hidden = false; }
+  let toastTimer = 0;
+  function toast(text) {
+    el.toast.textContent = text;
+    el.toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.toast.classList.remove('show'), 1800);
+  }
+
+  /* =====================================================================
+     YOUTUBE PLAYER
+     ===================================================================== */
+  let player = null;
+  let ready = false;
+  let wantPlay = false;   // we asked the player to play a segment
+  let playing = false;    // player confirmed PLAYING for the current segment
+  let sawStart = false;   // current-time readings are from this segment (not a stale pre-seek value)
+  let stopAt = 0;
+  let rafId = 0;
+  let tapTimer = 0;
+  let lastT = 0, lastTAt = 0;
+
+  window.onYouTubeIframeAPIReady = function () {
+    const vars = { controls: 0, disablekb: 1, fs: 0, iv_load_policy: 3, rel: 0, playsinline: 1,
+                   modestbranding: 1, cc_load_policy: 0, start: Math.floor(clipStart()) };
+    if (/^https?:$/.test(location.protocol)) vars.origin = location.origin;
+    player = new YT.Player('player', {
+      host: 'https://www.youtube-nocookie.com',
+      videoId: clip().id,
+      width: '100%', height: '100%',
+      playerVars: vars,
+      events: { onReady, onStateChange, onError },
+    });
+  };
+
+  function onReady() {
+    ready = true;
+    el.stage.classList.remove('loading');
+    render();
+  }
+
+  function onStateChange(ev) {
+    const S = YT.PlayerState;
+    if (ev.data === S.PLAYING) {
+      if (!wantPlay) { player.pauseVideo(); return; }
+      playing = true;
+      clearTimeout(tapTimer);
+      el.stage.classList.remove('loading', 'tap-mode');
+      el.stage.classList.add('playing');
+      if (el.msg.textContent.startsWith('Tap the video')) showMsg('');
+      setPlayIcon(true);
+    } else if (ev.data === S.ENDED) {
+      if (wantPlay) stopPlayback();
+    } else if (ev.data === S.PAUSED) {
+      // Paused from outside our control (e.g. tap-mode touch) — treat as a stop.
+      if (wantPlay && playing) stopPlayback();
+    }
+  }
+
+  function onError(ev) {
+    const codeNum = ev.data;
+    stopPlayback();
+    if (codeNum === 153) {
+      showBanner('YouTube refused to play this clip here (error 153). Open the game through the local server — run <code>Play Sopranle.bat</code> — instead of opening the file directly.');
+      return;
+    }
+    if (YT_ERRORS_UNAVAILABLE.includes(codeNum) && state.guesses.length === 0 && !finished() && fallbackTries < 5) {
+      // Clip has gone missing or blocks embedding: swap to a backup before the player has guessed anything.
+      fallbackTries++;
+      if (practice) {
+        state.clip = (state.clip + 1 + Math.floor(Math.random() * (CLIPS.length - 1))) % CLIPS.length;
+      } else {
+        const pos = ORDER.indexOf(state.clip);
+        state.clip = ORDER[(pos + 1) % ORDER.length];
+      }
+      save();
+      player.cueVideoById({ videoId: clip().id, startSeconds: clipStart() });
+      showMsg("Today's first clip wasn't available, so a backup clip was loaded.");
+      render();
+      return;
+    }
+    showMsg(`This clip couldn't be played (YouTube error ${codeNum}).`, true);
+  }
+
+  function setPlayIcon(isStop) {
+    el.playIcon.innerHTML = `<path d="${isStop ? ICON_STOP : ICON_PLAY}"/>`;
+    el.playBtn.setAttribute('aria-label', isStop ? 'Stop clip' : 'Play clip');
+  }
+
+  function playSegment() {
+    if (!ready || !player) return;
+    if (wantPlay) { stopPlayback(); return; }
+    const start = clipStart();
+    stopAt = start + currentLimit();
+    wantPlay = true;
+    playing = false;
+    sawStart = false;
+    lastT = -1;
+    el.stage.classList.add('loading');
+    player.seekTo(start, true);
+    player.playVideo();
+    setPlayIcon(true);
+    cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(tick);
+    clearTimeout(tapTimer);
+    // Some mobile browsers only allow playback after a direct tap on the video itself.
+    tapTimer = setTimeout(() => {
+      if (wantPlay && !playing) {
+        el.stage.classList.remove('loading');
+        el.stage.classList.add('tap-mode');
+        showMsg('Tap the video to start playback.');
+      }
+    }, 3000);
+  }
+
+  function stopPlayback() {
+    const was = wantPlay;
+    wantPlay = false;
+    playing = false;
+    cancelAnimationFrame(rafId);
+    clearTimeout(tapTimer);
+    el.stage.classList.remove('playing', 'loading', 'tap-mode');
+    setPlayIcon(false);
+    setPlayed(0);
+    if (was && player && ready) { try { player.pauseVideo(); } catch { /* ignore */ } }
+  }
+
+  function tick() {
+    if (!wantPlay) return;
+    const now = performance.now();
+    const raw = player.getCurrentTime ? player.getCurrentTime() : 0;
+    if (raw !== lastT) { lastT = raw; lastTAt = now; }
+    if (playing) {
+      // The API reports time in coarse steps; extrapolate (max 0.5s) for a smooth bar and a tight stop.
+      const t = lastT + Math.min((now - lastTAt) / 1000, 0.5);
+      if (!sawStart && lastT >= clipStart() - 1 && lastT < stopAt - 0.1) sawStart = true;
+      if (sawStart) {
+        if (t >= stopAt) { stopPlayback(); return; }
+        setPlayed(Math.max(0, t - clipStart()));
+      }
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+
+  /* =====================================================================
+     RENDERING
+     ===================================================================== */
+  function setPlayed(sec) {
+    const pct = Math.min(sec / TIMELINE_MAX, 1) * 100;
+    el.played.style.width = pct + '%';
+    el.clock.textContent = sec.toFixed(1) + 's';
+  }
+
+  function render() {
+    const lim = currentLimit();
+    const attempt = Math.min(state.guesses.length, ATTEMPTS.length - 1);
+
+    // header
+    el.subtitle.innerHTML = practice
+      ? '<b>Practice</b> · name that episode'
+      : `Daily <b>#${state.puzzle}</b> · name that episode`;
+
+    // cover + play controls
+    el.cover.disabled = !ready;
+    el.playBtn.disabled = !ready;
+    if (!ready) {
+      el.coverLabel.textContent = 'Loading clip…';
+      el.coverHint.textContent = '';
+    } else if (finished()) {
+      el.coverLabel.textContent = 'Watch the scene';
+      el.coverHint.textContent = 'No limits now — click the video to stop';
+    } else {
+      el.coverLabel.textContent = `Play ${lim} seconds`;
+      el.coverHint.textContent = `Attempt ${attempt + 1} of ${ATTEMPTS.length}`;
+    }
+
+    // timeline
+    el.unlocked.style.width = (finished() ? 100 : (lim / TIMELINE_MAX) * 100) + '%';
+    [...el.marks.children].forEach((m, i) => {
+      m.classList.toggle('on', finished() || ATTEMPTS[i] <= lim);
+    });
+
+    // guesses
+    el.guesses.innerHTML = '';
+    ATTEMPTS.forEach((secs, i) => {
+      const li = document.createElement('li');
+      const g = state.guesses[i];
+      const badge = document.createElement('span');
+      badge.className = 'badge';
+      const main = document.createElement('span');
+      main.className = 'g-main';
+      const title = document.createElement('span');
+      title.className = 'g-title';
+      const hint = document.createElement('span');
+      hint.className = 'g-hint';
+      const right = document.createElement('span');
+      right.className = 'g-code';
+      if (!g) {
+        li.className = 'slot empty' + (!finished() && i === state.guesses.length ? ' current' : '');
+        badge.textContent = i + 1;
+        title.textContent = `${secs}-second clip`;
+        hint.textContent = !finished() && i === state.guesses.length ? 'Your guess' : '';
+      } else {
+        const r = grade(g);
+        li.className = 'slot ' + r;
+        badge.textContent = { hit: '✓', close: '~', miss: '✗', skip: '–' }[r];
+        title.textContent = g.skip ? 'Skipped' : epTitle(g.s, g.e);
+        hint.textContent = g.skip ? `Used the ${secs}-second clip` : hintFor(g);
+        right.textContent = g.skip ? '' : code(g.s, g.e);
+      }
+      main.append(title, hint);
+      li.append(badge, main, right);
+      el.guesses.appendChild(li);
+    });
+
+    // input area
+    el.controls.hidden = finished();
+    if (!finished()) {
+      const last = state.guesses.length === ATTEMPTS.length - 1;
+      el.skipBtn.textContent = last ? 'Give up' : `Skip (+${ATTEMPTS[attempt + 1] - ATTEMPTS[attempt]}s)`;
+      el.submitBtn.disabled = !selected;
+    }
+
+    renderResult();
+  }
+
+  function squares() {
+    const map = { hit: '🟩', close: '🟨', miss: '🟥', skip: '⬛' };
+    return ATTEMPTS.map((_, i) => (state.guesses[i] ? map[grade(state.guesses[i])] : '⬜')).join('');
+  }
+
+  function renderResult() {
+    el.result.hidden = !finished();
+    if (!finished()) return;
+    const a = clip();
+    const won = state.status === 'won';
+    const n = state.guesses.length;
+    $('#resTitle').textContent = won ? ['Made guy.', 'Capo material.', 'Squeaked by.'][n - 1] : 'You got whacked.';
+    $('#resVerdict').textContent = won
+      ? `You named it in ${n} ${n === 1 ? 'try' : 'tries'} — ${ATTEMPTS[n - 1]} seconds was all you needed.`
+      : 'Better luck tomorrow. Here’s what it was:';
+    $('#resCode').textContent = `Season ${a.s} · Episode ${a.e}`;
+    $('#resEp').textContent = epTitle(a.s, a.e);
+    $('#resScene').textContent = 'Scene: ' + a.scene;
+    $('#resSquares').textContent = squares();
+    $('#ytLink').href = `https://www.youtube.com/watch?v=${encodeURIComponent(a.id)}&t=${Math.floor(clipStart())}s`;
+    $('#nextWrap').hidden = practice;
+    $('#practiceNote').hidden = !practice;
+    $('#practiceBtn').textContent = practice ? 'Another practice clip' : 'Practice clip';
+  }
+
+  /* =====================================================================
+     GUESS INPUT (combobox)
+     ===================================================================== */
+  let selected = null;     // {s, e}
+  let matches = [];        // episodes in the open list
+  let activeIdx = -1;
+
+  const guessedKey = (s, e) => state.guesses.some((g) => !g.skip && g.s === s && g.e === e);
+
+  function search(q) {
+    const n = normalize(q);
+    if (!n) return ALL_EPS;
+    const compact = n.replace(/season/g, 's').replace(/episode|ep/g, 'e').replace(/\s+/g, '');
+    const m = compact.match(/^s?(\d)(?:[ex](\d{0,2}))?$/);
+    return ALL_EPS.filter((ep) => {
+      if (m && ep.s === +m[1] && (!m[2] || String(ep.e).startsWith(m[2]))) return true;
+      return ep.norm.includes(n) || ep.flat.includes(compact);
+    });
+  }
+
+  function openList() {
+    matches = search(selected ? '' : el.input.value);
+    const showHeads = !el.input.value.trim() || selected;
+    el.suggest.innerHTML = '';
+    if (!matches.length) {
+      const li = document.createElement('li');
+      li.className = 'none';
+      li.textContent = 'No episode matches that.';
+      el.suggest.appendChild(li);
+    }
+    let lastSeason = 0;
+    matches.forEach((ep, i) => {
+      if (showHeads && ep.s !== lastSeason) {
+        lastSeason = ep.s;
+        const h = document.createElement('li');
+        h.className = 'season-head';
+        h.textContent = `Season ${ep.s}`;
+        h.setAttribute('role', 'presentation');
+        el.suggest.appendChild(h);
+      }
+      const li = document.createElement('li');
+      li.setAttribute('role', 'option');
+      li.id = 'opt-' + i;
+      li.dataset.idx = i;
+      const used = guessedKey(ep.s, ep.e);
+      if (used) li.classList.add('used');
+      const c = document.createElement('span');
+      c.className = 'code';
+      c.textContent = code(ep.s, ep.e);
+      const t = document.createElement('span');
+      t.textContent = ep.title;
+      li.append(c, t);
+      el.suggest.appendChild(li);
+    });
+    el.suggest.hidden = false;
+    el.input.setAttribute('aria-expanded', 'true');
+    // While typing, pre-highlight the first match so Enter picks it.
+    const typing = el.input.value.trim() && !selected;
+    setActive(typing ? matches.findIndex((ep) => !guessedKey(ep.s, ep.e)) : -1);
+  }
+
+  function closeList() {
+    el.suggest.hidden = true;
+    el.input.setAttribute('aria-expanded', 'false');
+    el.input.removeAttribute('aria-activedescendant');
+    activeIdx = -1;
+  }
+
+  function setActive(i) {
+    activeIdx = i;
+    el.suggest.querySelectorAll('li[role="option"]').forEach((li) => li.classList.toggle('active', +li.dataset.idx === i));
+    if (i >= 0) {
+      const li = document.getElementById('opt-' + i);
+      el.input.setAttribute('aria-activedescendant', 'opt-' + i);
+      li && li.scrollIntoView({ block: 'nearest' });
+    } else {
+      el.input.removeAttribute('aria-activedescendant');
+    }
+  }
+
+  function choose(i) {
+    const ep = matches[i];
+    if (!ep || guessedKey(ep.s, ep.e)) return;
+    selected = { s: ep.s, e: ep.e };
+    el.input.value = `${code(ep.s, ep.e)} · ${ep.title}`;
+    el.submitBtn.disabled = false;
+    closeList();
+  }
+
+  el.input.addEventListener('input', () => {
+    selected = null;
+    el.submitBtn.disabled = true;
+    openList();
+  });
+  el.input.addEventListener('focus', () => { if (!finished()) openList(); });
+  el.input.addEventListener('blur', () => setTimeout(closeList, 150));
+  el.input.addEventListener('keydown', (ev) => {
+    const open = !el.suggest.hidden;
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      if (!open) openList();
+      if (!matches.length) return;
+      const dir = ev.key === 'ArrowDown' ? 1 : -1;
+      let i = activeIdx;
+      for (let k = 0; k < matches.length; k++) {
+        i = (i + dir + matches.length) % matches.length;
+        if (!guessedKey(matches[i].s, matches[i].e)) break;
+      }
+      setActive(i);
+    } else if (ev.key === 'Enter') {
+      ev.preventDefault();
+      if (open && activeIdx >= 0) choose(activeIdx);
+      else if (selected) submitGuess();
+      else if (open) {
+        const avail = matches.filter((ep) => !guessedKey(ep.s, ep.e));
+        if (avail.length === 1) choose(matches.indexOf(avail[0]));
+      }
+    } else if (ev.key === 'Escape') {
+      closeList();
+    }
+  });
+  el.suggest.addEventListener('mousedown', (ev) => {
+    const li = ev.target.closest('li[role="option"]');
+    if (!li) return;
+    ev.preventDefault();
+    choose(+li.dataset.idx);
+  });
+
+  /* =====================================================================
+     GAME FLOW
+     ===================================================================== */
+  function commit(guess) {
+    if (finished()) return;
+    stopPlayback();
+    state.guesses.push(guess);
+    const r = grade(guess);
+    if (r === 'hit') state.status = 'won';
+    else if (state.guesses.length >= ATTEMPTS.length) state.status = 'lost';
+    save();
+    selected = null;
+    el.input.value = '';
+    closeList();
+    if (finished()) {
+      recordStats();
+      showMsg('');
+    } else {
+      const next = ATTEMPTS[state.guesses.length];
+      showMsg(r === 'skip' ? `Skipped — ${next} seconds unlocked.` : `Not quite — ${next} seconds unlocked.`);
+    }
+    render();
+    if (finished()) el.result.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function submitGuess() {
+    if (!selected) { showMsg('Pick an episode from the list.', true); return; }
+    commit({ s: selected.s, e: selected.e });
+  }
+
+  el.submitBtn.addEventListener('click', submitGuess);
+  el.skipBtn.addEventListener('click', () => commit({ skip: true }));
+  el.cover.addEventListener('click', playSegment);
+  el.playBtn.addEventListener('click', playSegment);
+  el.shield.addEventListener('click', () => { if (wantPlay) stopPlayback(); else playSegment(); });
+  $('#watchBtn').addEventListener('click', () => {
+    if (!wantPlay) playSegment();
+    el.stage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  $('#practiceBtn').addEventListener('click', () => {
+    let idx = Math.floor(Math.random() * CLIPS.length);
+    if (CLIPS.length > 1 && idx === state.clip) idx = (idx + 1) % CLIPS.length;
+    location.href = `?clip=${idx}`;
+  });
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key !== ' ' || ev.target === el.input || ev.target.closest('button, a, dialog')) return;
+    ev.preventDefault();
+    playSegment();
+  });
+
+  /* =====================================================================
+     STATS / SHARE / DIALOGS
+     ===================================================================== */
+  function loadStats() {
+    return Object.assign({ played: 0, wins: 0, streak: 0, maxStreak: 0, dist: [0, 0, 0, 0], lastPuzzle: 0, lastWin: 0 },
+      store.get(KEY_STATS) || {});
+  }
+  function recordStats() {
+    if (practice) return;
+    const st = loadStats();
+    if (st.lastPuzzle === state.puzzle) return;
+    st.played++;
+    if (state.status === 'won') {
+      st.wins++;
+      st.dist[state.guesses.length - 1]++;
+      st.streak = st.lastWin === state.puzzle - 1 ? st.streak + 1 : 1;
+      st.lastWin = state.puzzle;
+      st.maxStreak = Math.max(st.maxStreak, st.streak);
+    } else {
+      st.dist[3]++;
+      st.streak = 0;
+    }
+    st.lastPuzzle = state.puzzle;
+    store.set(KEY_STATS, st);
+  }
+  function renderStats() {
+    const st = loadStats();
+    const streak = st.lastWin >= puzzleNo - 1 ? st.streak : 0;
+    const pct = st.played ? Math.round((st.wins / st.played) * 100) : 0;
+    $('#statRow').innerHTML = [[st.played, 'Played'], [pct, 'Win %'], [streak, 'Streak'], [st.maxStreak, 'Best']]
+      .map(([v, l]) => `<div><b>${v}</b><span>${l}</span></div>`).join('');
+    const max = Math.max(1, ...st.dist);
+    const todayIdx = !practice && state.puzzle === st.lastPuzzle && finished()
+      ? (state.status === 'won' ? state.guesses.length - 1 : 3) : -1;
+    $('#dist').innerHTML = ['1', '2', '3', 'X'].map((label, i) =>
+      `<div><span>${label}</span><span class="bar${i === todayIdx ? ' today' : ''}" style="width:${Math.max(8, (st.dist[i] / max) * 100)}%">${st.dist[i]}</span></div>`
+    ).join('');
+  }
+
+  function shareText() {
+    const score = state.status === 'won' ? `${state.guesses.length}/3` : 'X/3';
+    const label = practice ? 'Sopranle (practice)' : `Sopranle #${state.puzzle}`;
+    return `${label} ${score}\n🎬 ${squares()}`;
+  }
+  $('#shareBtn').addEventListener('click', async () => {
+    const text = shareText();
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Copied to clipboard');
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch { /* ignore */ }
+      ta.remove();
+      toast(ok ? 'Copied to clipboard' : text);
+    }
+  });
+
+  const helpDlg = $('#helpDlg');
+  const statsDlg = $('#statsDlg');
+  $('#helpBtn').addEventListener('click', () => helpDlg.showModal());
+  $('#statsBtn').addEventListener('click', () => { renderStats(); statsDlg.showModal(); });
+  document.querySelectorAll('dialog').forEach((d) => {
+    d.addEventListener('click', (ev) => {
+      if (ev.target === d || ev.target.closest('[data-close]')) d.close();
+    });
+  });
+
+  function tickCountdown() {
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const s = Math.max(0, Math.floor((next - now) / 1000));
+    const pad = (x) => String(x).padStart(2, '0');
+    $('#countdown').textContent = `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`;
+    if (!practice && todayPuzzle() !== puzzleNo && el.banner.hidden) {
+      showBanner('A new clip is ready. <a href="" style="color:inherit">Reload</a> to play it.');
+    }
+  }
+
+  /* =====================================================================
+     BOOT
+     ===================================================================== */
+  if (location.protocol === 'file:') {
+    showBanner('YouTube won’t play clips on a page opened straight from disk. Double-click <code>Play Sopranle.bat</code> in this folder (it opens <code>http://localhost:8000</code>).');
+  }
+  render();
+  tickCountdown();
+  setInterval(tickCountdown, 1000);
+  setTimeout(() => {
+    if (!ready) showMsg('The YouTube player hasn’t loaded. Check your connection or any ad/script blocker.', true);
+  }, 12000);
+  if (!store.get(KEY_HELP)) {
+    store.set(KEY_HELP, true);
+    helpDlg.showModal();
+  }
+})();
+</script>
+<script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>
